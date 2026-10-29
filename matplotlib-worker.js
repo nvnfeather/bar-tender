@@ -22,11 +22,13 @@ self.onmessage = async ({data}) => {
       self.postMessage({type:'result', id:data.id, ready:true});
       return;
     }
+    self.postMessage({type:'rendering', id:data.id, custom:data.payload.graphs.some(g=>!!g.appearanceCode)});
     runtime.globals.set('plot_payload', JSON.stringify(data.payload));
     const result = await runtime.runPythonAsync('render_charts(plot_payload)');
     self.postMessage({type:'result', id:data.id, ...JSON.parse(result)});
   } catch (error) {
-    self.postMessage({type:'error', id:data.id, message:String(error.message||error)});
+    const message=String(error.message||error),start=message.indexOf('Appearance script for');
+    self.postMessage({type:'error', id:data.id, message:start>=0?message.slice(start).trim():message,kind:start>=0?'appearance':'engine'});
   } finally {
     if (runtime && data.type !== 'warmup') runtime.globals.delete('plot_payload');
   }

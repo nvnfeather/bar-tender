@@ -3,10 +3,29 @@ import io
 import base64
 import json
 import math
+import traceback
+from types import MappingProxyType
 import matplotlib
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
 import numpy as np
+
+
+def apply_appearance(code, fig, ax, data, categories, series, title):
+    if not code.strip():
+        return
+    # Scripts only see a detached, immutable snapshot of the data. The editor's
+    # source state remains in JavaScript; no data writes are returned here.
+    records = tuple(MappingProxyType({**point, 'raw': tuple(point['raw']) if point.get('raw') is not None else None}) for point in data)
+    namespace = {'fig': fig, 'ax': ax, 'bars': tuple(ax.patches), 'np': np, 'plt': plt,
+                 'data': records, 'categories': tuple(categories), 'series': tuple(series)}
+    try:
+        exec(compile(code, 'appearance.py', 'exec'), namespace, namespace)
+    except Exception as error:
+        frames = [frame for frame in traceback.extract_tb(error.__traceback__) if frame.filename == 'appearance.py']
+        line = getattr(error, 'lineno', None) or (frames[-1].lineno if frames else None)
+        location = f' at line {line}' if line is not None else ''
+        raise ValueError(f'Appearance script for "{title}"{location}: {type(error).__name__}: {error}') from None
 
 
 def render_charts(payload_json):
@@ -25,6 +44,8 @@ def render_charts(payload_json):
             summaries = []
             for ax, graph in zip(axes.flat, graphs):
                 data = graph['data']
+                show_points = graph.get('points', False)
+                rng = np.random.default_rng(0)
                 # Recompute raw statistics in Python; supplied mean/SD remain as entered.
                 for point in data:
                     if point.get('raw') is not None:
@@ -41,7 +62,7 @@ def render_charts(payload_json):
                     for group in series:
                         samples = np.concatenate([point['raw'] for point in data if point['series'] == group])
                         data.append({'category': 'Overall average', 'series': group,
-                                     'mean': float(np.mean(samples)),
+                                     'mean': float(np.mean(samples)), 'raw': samples.tolist(),
                                      'sd': float(np.std(samples, ddof=1)) if len(samples) > 1 else None})
                     categories.append('Overall average')
                 positions = {category: i for i, category in enumerate(categories)}
@@ -58,6 +79,14 @@ def render_charts(payload_json):
                         deviation = point['sd'] if graph['sd'] and point['sd'] is not None else 0
                         low = min(low, point['mean'] - deviation)
                         high = max(high, point['mean'] + deviation)
+                        samples = point.get('raw') if show_points else None
+                        if samples is not None and len(samples):
+                            low, high = min(low, min(samples)), max(high, max(samples))
+                            offsets = rng.permutation(np.linspace(-bar_width*.28, bar_width*.28, len(samples))) if len(samples) > 1 else np.array([0.])
+                            ax.scatter(cx+offsets, samples, s=20 if not combined else 14,
+                                       facecolors='white', edgecolors='black', linewidths=.7,
+                                       alpha=.9, zorder=4)
+                            bar.set_alpha(.5)
                         if point['category'] == 'Overall average':
                             bar.set_alpha(.65)
                         if graph['sd'] and point['sd'] is not None:
@@ -65,8 +94,11 @@ def render_charts(payload_json):
                                         ecolor='black', capsize=3, elinewidth=1.2)
                         if graph['labels']:
                             negative = point['mean'] < 0
+                            label_edge = point['mean'] - deviation if negative else point['mean'] + deviation
+                            if samples:
+                                label_edge = min(label_edge, min(samples)) if negative else max(label_edge, max(samples))
                             ax.annotate(f"{point['mean']:.2f}".rstrip('0').rstrip('.'),
-                                        (cx, point['mean'] - deviation if negative else point['mean'] + deviation),
+                                        (cx, label_edge),
                                         xytext=(0, -4 if negative else 4), textcoords='offset points',
                                         ha='center', va='top' if negative else 'bottom', fontsize=8 if combined else 9)
                 for key in ['lower', 'upper']:
@@ -88,6 +120,7 @@ def render_charts(payload_json):
                     ax.legend(loc='best', fontsize=8 if combined else 9)
                 if combined:
                     ax.tick_params(labelsize=8)
+                apply_appearance(graph.get('appearanceCode', ''), fig, ax, data, categories, series, graph['title'])
                 summaries.append({'bars': len(data), 'cats': len(categories), 'groups': len(series)})
             for ax in list(axes.flat)[len(graphs):]:
                 ax.set_visible(False)
@@ -100,3 +133,4 @@ def render_charts(payload_json):
                                'matplotlibVersion': matplotlib.__version__})
         finally:
             plt.close(fig)
+            plt.close('all')

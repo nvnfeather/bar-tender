@@ -19,7 +19,11 @@ Click **Copy PNG** to copy the currently displayed graph (or combined figure) as
 
 Python and Matplotlib start downloading in the background as soon as the page opens. You can create graphs and enter data while they load. Initialization may take a minute depending on your connection; charts render when the engine is ready and reuse it while the tab remains open. An internet connection and access to cdn.jsdelivr.net are required to initialize the chart engine. Measurements remain in the visitor's browser and are never sent to a plotting server.
 
-Save projects before closing or refreshing. No automatic data persistence is provided.
+Graphs, entered data (including unfinished rows), settings, the active graph and the combined-view selection are automatically saved in browser storage and restored after refresh or reopening the same website in the same browser profile. Deleting a graph also updates the saved workspace. New visitors still start with an empty workspace.
+
+Use Save Excel for a downloadable backup or to move data to another browser, computer or website address. Browser autosave does not sync between devices or between this preview site and GitHub Pages. Clearing site data or private browsing can remove the saved workspace. If browser storage is blocked or full, the app shows a warning and you can still use Save Excel.
+
+Enable **Individual measurements** under Display to overlay the raw samples as dots on their mean bars. Turn Standard deviation off to show dots without error bars, or leave both on. Dots are slightly spread horizontally to reveal overlapping measurements. Mean + SD rows have no raw measurements, so dots are shown only for raw-data rows. This setting is saved with each graph and applies to PNG copies and SVG exports.
 
 ## Files
 
@@ -36,3 +40,39 @@ Save projects before closing or refreshing. No automatic data persistence is pro
 Serve through GitHub Pages or an HTTP server. Opening index.html directly with file:// does not support loading the Python worker.
 
 The runtime is pinned to Pyodide 0.27.7, which supplies Matplotlib 3.8.4. No server, API key, Python installation, npm build, or GitHub Actions configuration is needed.
+
+## Advanced appearance mode
+
+Select a graph, open **Advanced**, and edit its Python appearance code. It runs after the standard Matplotlib plot is drawn, using the current table data. Click **Run / Update preview** (or Ctrl + Enter) to apply. Editing a draft does not execute it.
+
+Available objects:
+
+- `ax`: selected graph's Matplotlib axes
+- `fig`: Matplotlib figure (shared when showing combined graphs)
+- `bars`: tuple of existing bar artists
+- `data`: read-only tuple of measurement records with `category`, `series`, `mean`, `sd`, and `raw` (raw values are tuples, or None for supplied means)
+- `categories`, `series`: tuples of the current plotted names
+- `np`, `plt`: NumPy and Matplotlib pyplot
+
+The script changes the visual output only. Source measurements stay in the table. Editing table data automatically redraws using the last successfully applied script. Appearance controls pause while custom code is active; pivoting and data entry remain available.
+
+Both the applied code and your current draft are stored in autosave and saved projects. Invalid scripts report their line number and preserve the last successful chart for the same graph view, including its export/copy output. The failed draft is retained for correction.
+
+**Reset appearance** returns to the standard controls, keeping all measurement data. **Stop / Restart Python** terminates even an infinite loop, reloads the engine, and pauses custom scripts across the workspace while retaining their drafts and all data. Custom runs exceeding 15 seconds are also stopped automatically; use Stop / Restart Python to resume.
+
+
+## Editable Excel projects
+
+**Save Excel** downloads `bar-tender-project.xlsx`. **Open Excel** restores the workbook, including every graph, its measurements, settings, palettes, limits, individual-point option and Advanced appearance scripts. Older `.json` project backups can still be opened. Ordinary arbitrary spreadsheets require mapping and are not automatically interpreted; use a Bar-Tender exported workbook.
+
+- Each numbered sheet contains one graph’s editable measurement table. One row is one bar.
+- For **Mean + SD**, edit Mean and SD. For **Raw data**, edit Measurement 1, Measurement 2, etc.; the app recalculates mean and sample SD from those measurements.
+- Mean, SD and n for raw rows have formulas with cached results for viewing in Excel.
+- You can add measurement rows and sequential Measurement N columns. Preserve the headers and worksheet names.
+- **Graphs** holds graph settings and the mapping to each data sheet.
+- **Appearance** stores applied scripts and unfinished drafts in numbered parts.
+- **Workspace** remembers the active graph and combined view.
+
+Import validates the complete workbook before replacing the open workspace. If a required sheet is missing or a source formula lacks a cached result, the app reports an error and leaves the existing workspace intact. Recalculate and save formula-based inputs in Excel before importing. Unfinished rows can be saved and reopened for completion.
+
+The Excel library (ExcelJS 4.4.0, MIT license) is bundled locally in `vendor/`; include that folder when uploading the app to GitHub Pages. Excel save/open does not need Python or a server. SVG export and Copy PNG remain separate image actions.
